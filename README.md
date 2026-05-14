@@ -1,6 +1,6 @@
 # Magos Nodes — ComfyUI DWPose & NLF Editor / Retargeter
 
-*Note: this README was written by an AI (Claude) from the source code.*
+*Note: this README was written by an AI from the source code.*
 
 A professional node pack by **Magos Digital Studio** for precise pose control inside ComfyUI.
 Extract **DWPose** body / hand / face keypoints **and** **NLF** 3D SMPL joints from a video batch, edit either skeleton frame-by-frame in a full-screen interactive editor (timeline + dope sheet + graph + 3D orbit + animated camera), retarget body cluster proportions, and render clean pose images.
