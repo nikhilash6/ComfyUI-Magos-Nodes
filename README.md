@@ -3,7 +3,7 @@
 *Note: this README was written by an AI from the source code.*
 
 A professional node pack by **Magos Digital Studio** for precise pose control inside ComfyUI.
-Extract **DWPose** body / hand / face keypoints **and** **NLF** 3D SMPL joints from a video batch, edit either skeleton frame-by-frame in a full-screen interactive editor (timeline + dope sheet + graph + 3D orbit + animated camera), retarget body cluster proportions, and render clean pose images.
+Extract **DWPose** body / hand / face keypoints **and** **NLF** 3D SMPL joints from a video batch, **edit either skeleton frame-by-frame in a full-screen interactive editor **(timeline + dope sheet + graph + 3D orbit + animated camera), retarget body cluster proportions, and render clean pose images.
 
 The pack is engine-agnostic: it outputs standard ComfyUI types (`IMAGE`, `POSE_KEYPOINT`, `BBOX`) and the WanAnimatePreprocess `POSEDATA` type, so it plugs into **WanAnimate, ControlNet (OpenPose / DWPose), SCAIL, LTX-Video, UniAnimate**, and any other pose-driven pipeline.
 
