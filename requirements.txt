@@ -1,0 +1,9 @@
+# Runtime dependencies for Magos Nodes.
+# All of these are normally already installed by ComfyUI itself or by
+# ComfyUI-WanAnimatePreprocess; they are listed here for installers
+# that want to verify the environment before first use.
+
+numpy
+opencv-python
+torch
+onnxruntime

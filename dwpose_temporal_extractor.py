@@ -88,8 +88,8 @@ class DWPoseTEExtractor:
     """
 
     CATEGORY     = "MAGOS Nodes/Temporal Editor"
-    RETURN_TYPES = ("KEYFRAME_DATA", "POSEDATA", "IMAGE", "BBOX", "BBOX")
-    RETURN_NAMES = ("keyframe_data", "pose_data", "face_images", "bboxes", "facebboxes")
+    RETURN_TYPES = ("KEYFRAME_DATA", "POSEDATA", "IMAGE", "BBOX", "BBOX", "NLF_MODEL")
+    RETURN_NAMES = ("keyframe_data", "pose_data", "face_images", "bboxes", "facebboxes", "nlf_model")
     FUNCTION     = "extract"
 
     @classmethod
@@ -97,11 +97,19 @@ class DWPoseTEExtractor:
         all_models    = folder_paths.get_filename_list("detection") if _FOLDER_PATHS else []
         vitpose_models = [m for m in all_models if "vitpose" in m.lower()] or all_models
         yolo_models    = [m for m in all_models if "yolo"    in m.lower()] or all_models
+
+        try:
+            from .nlf_integration import list_nlf_models
+            nlf_choices = ["(None)"] + list_nlf_models()
+        except Exception:
+            nlf_choices = ["(None)"]
+
         return {
             "required": {
                 "images":               ("IMAGE",),
                 "vitpose_model":        (vitpose_models, {"tooltip": "ViTPose ONNX model from ComfyUI/models/detection"}),
                 "yolo_model":           (yolo_models,    {"tooltip": "YOLO ONNX model from ComfyUI/models/detection"}),
+                "nlf_model":            (nlf_choices,    {"default": "(None)", "tooltip": "NLF .safetensors from ComfyUI/models/nlf/ for 3D depth. Requires ComfyUI-SCAIL-Pose. Select (None) to skip."}),
                 "onnx_device":          (["CUDAExecutionProvider", "CPUExecutionProvider"], {"default": "CUDAExecutionProvider", "tooltip": "Device to run the ONNX models on"}),
                 "detect_hands":         ("BOOLEAN", {"default": True,  "label_on": "Hands: On",  "label_off": "Hands: Off"}),
                 "detect_face":          ("BOOLEAN", {"default": True,  "label_on": "Face: On",   "label_off": "Face: Off"}),
@@ -111,6 +119,7 @@ class DWPoseTEExtractor:
                 "output_width":         ("INT",     {"default": 0,     "min": 0,   "max": 8192,   "step": 8,  "tooltip": "0 = use source width"}),
                 "output_height":        ("INT",     {"default": 0,     "min": 0,   "max": 8192,   "step": 8,  "tooltip": "0 = use source height"}),
                 "face_padding":         ("INT",     {"default": 20,    "min": 0,   "max": 200,    "step": 1}),
+                "debug_log":            ("BOOLEAN", {"default": False, "label_on": "Debug: On", "label_off": "Debug: Off", "tooltip": "Write full trace to CMD + logs/session_*.log"}),
             },
         }
 
@@ -120,6 +129,7 @@ class DWPoseTEExtractor:
         images: torch.Tensor,
         vitpose_model: str,
         yolo_model: str,
+        nlf_model: str              = "(None)",
         onnx_device: str            = "CUDAExecutionProvider",
         detect_hands: bool          = True,
         detect_face: bool           = True,
@@ -129,7 +139,34 @@ class DWPoseTEExtractor:
         output_width: int           = 0,
         output_height: int          = 0,
         face_padding: int           = 20,
+        debug_log: bool             = False,
     ) -> tuple:
+
+        from .debug_logger import get_logger
+        log = get_logger("Extractor", debug_log)
+
+        # Load NLF model natively (replaces the old NLF_MODEL input port)
+        nlf_pipeline = None
+        if nlf_model and nlf_model != "(None)":
+            try:
+                from .nlf_integration import load_nlf_model_scail
+                nlf_pipeline = load_nlf_model_scail(nlf_model)
+            except Exception as e:
+                print(f"[NLF] Extractor: native load failed — {e}")
+
+        log.section("EXTRACT START", {
+            "images": images,
+            "vitpose_model": vitpose_model,
+            "yolo_model": yolo_model,
+            "onnx_device": onnx_device,
+            "detect_hands": detect_hands,
+            "detect_face": detect_face,
+            "detect_head": detect_head,
+            "confidence_threshold": confidence_threshold,
+            "person_index": person_index,
+            "output_wh": (output_width, output_height),
+            "nlf_model": nlf_model,
+        })
 
         # Load ONNX models (same as OnnxDetectionModelLoader from WanAnimatePreprocess)
         vitpose_path = folder_paths.get_full_path_or_raise("detection", vitpose_model)
@@ -219,6 +256,16 @@ class DWPoseTEExtractor:
 
         pose_model.cleanup()
 
+        log.section("DETECTION DONE", {
+            "total_frames": B,
+            "frames_with_detection": sum(1 for f in frames.values() if any(p[2] > 0 for p in f.get("body", []))),
+            "sample_frame_0_body_pts": len(frames.get(0, {}).get("body", [])),
+            "sample_frame_0_rhand": "yes" if frames.get(0, {}).get("rhand") else "no",
+            "sample_frame_0_lhand": "yes" if frames.get(0, {}).get("lhand") else "no",
+        })
+        if frames.get(0, {}).get("body"):
+            log.array("frame_0_body", frames[0]["body"])
+
         # ----------------------------------------------------------------
         # Step 3 — optional resize of keypoints
         # ----------------------------------------------------------------
@@ -257,6 +304,10 @@ class DWPoseTEExtractor:
                 if hand:
                     for i, pt in enumerate(hand):
                         entry[f"{side}_{i}"] = [pt[0], pt[1], pt[2] if len(pt) > 2 else 1.0]
+            face = frame_data.get("face")
+            if face:
+                for i, pt in enumerate(face):
+                    entry[f"face_{i}"] = [pt[0], pt[1], pt[2] if len(pt) > 2 else 1.0]
             overrides[fi] = entry
 
         keyframe_data = {
@@ -328,13 +379,56 @@ class DWPoseTEExtractor:
             else:
                 facebboxes_list.append([])
 
+        # ----------------------------------------------------------------
+        # Step 8 — NLF 3D depth baking (optional, requires NLF Model Loader)
+        # Runs NLF inference on the source images, maps SMPL 24-joint 3D
+        # positions to the 18 OpenPose body joints, and bakes real metric
+        # Z-depth into keyframe_data["z_depth"].  The raw SMPL frames are
+        # stored in keyframe_data["nlf_frames"] for the editor overlay.
+        # ----------------------------------------------------------------
+        if nlf_pipeline is not None:
+            try:
+                from .nlf_integration import run_nlf_inference, NLFStub
+                if isinstance(nlf_pipeline, NLFStub):
+                    print(f"[NLF] Extractor: NLF model stub ({nlf_pipeline.error}) — skipping 3D bake.")
+                else:
+                    print("[NLF] Extractor: running NLF inference to bake Z-depth…")
+                    nlf_results = run_nlf_inference(nlf_pipeline, images)
+                    if nlf_results:
+                        # Store SMPL frames for the editor's 3D overlay and NLF editing mode.
+                        # The editor auto-bakes nlf_body_N overrides on open.
+                        # Use "Bake Z Depth" in the editor sidebar to write NLF Z into DWPose body joints.
+                        keyframe_data["nlf_frames"] = nlf_results
+                        n_detected = sum(1 for f in nlf_results if f.get("body"))
+                        print(f"[NLF] Extractor: SMPL data stored "
+                              f"({n_detected}/{B} frames detected). "
+                              f"Editor auto-bakes as nlf_body_N overrides on open.")
+                    else:
+                        print("[NLF] Extractor: inference returned no results.")
+            except Exception as e:
+                import traceback
+                print(f"[NLF] Extractor: inference error — {e}")
+                traceback.print_exc()
+
         print(f"DWPoseTEExtractor: Done — {B} frames ({W}×{H}).")
+        log.section("EXTRACT DONE", {
+            "keyframe_data.frame_count": keyframe_data["frame_count"],
+            "keyframe_data.width": keyframe_data["width"],
+            "keyframe_data.height": keyframe_data["height"],
+            "overrides_frames": len(keyframe_data["overrides"]),
+            "nlf_frames": "yes" if "nlf_frames" in keyframe_data else "no",
+            "pose_data.frames": len(pose_data["pose_metas"]),
+            "face_images_shape": tuple(face_images_tensor.shape),
+            "bboxes_len": len(bboxes_list),
+            "facebboxes_len": len(facebboxes_list),
+        })
         return (
             keyframe_data,
             pose_data,
             face_images_tensor,
             bboxes_list,
             facebboxes_list,
+            nlf_pipeline,
         )
 
 

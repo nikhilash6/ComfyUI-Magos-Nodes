@@ -30,53 +30,73 @@ const KEYPOINTS = {
     R_TOE: 19
 };
 
-// OpenPose Hand Connections (21 points, 5 fingers)
-// Format: [startIdx, endIdx, color]
-const HAND_CONNECTIONS = {
-    // Right hand (red tones)
-    R_THUMB: [[0, 1], [1, 2], [2, 3], [3, 4]],
-    R_INDEX: [[0, 5], [5, 6], [6, 7], [7, 8]],
-    R_MIDDLE: [[0, 9], [9, 10], [10, 11], [11, 12]],
-    R_RING: [[0, 13], [13, 14], [14, 15], [15, 16]],
-    R_PINKY: [[0, 17], [17, 18], [18, 19], [19, 20]],
-    // Palm connections
-    R_PALM: [[0, 5], [5, 9], [9, 13], [13, 17]]
-};
+// OpenPose Hand Connections (21 points, 5 fingers) — flat list, same for both hands
+const HAND_CONNECTIONS = [
+    [0, 1], [1, 2], [2, 3], [3, 4],       // Thumb
+    [0, 5], [5, 6], [6, 7], [7, 8],       // Index
+    [0, 9], [9, 10],[10,11],[11,12],       // Middle
+    [0,13],[13,14],[14,15],[15,16],        // Ring
+    [0,17],[17,18],[18,19],[19,20],        // Pinky
+];
 
-const L_HAND_CONNECTIONS = {
-    L_THUMB: [[0, 1], [1, 2], [2, 3], [3, 4]],
-    L_INDEX: [[0, 5], [5, 6], [6, 7], [7, 8]],
-    L_MIDDLE: [[0, 9], [9, 10], [10, 11], [11, 12]],
-    L_RING: [[0, 13], [13, 14], [14, 15], [15, 16]],
-    L_PINKY: [[0, 17], [17, 18], [18, 19], [19, 20]],
-    L_PALM: [[0, 5], [5, 9], [9, 13], [13, 17]]
-};
+// Joint names for the 21 hand keypoints
+const HAND_JOINT_LABELS = [
+    "Wrist",
+    "Thumb 1","Thumb 2","Thumb 3","Thumb 4",
+    "Index 1","Index 2","Index 3","Index 4",
+    "Mid 1",  "Mid 2",  "Mid 3",  "Mid 4",
+    "Ring 1", "Ring 2", "Ring 3", "Ring 4",
+    "Pinky 1","Pinky 2","Pinky 3","Pinky 4",
+];
 
-// Skeleton connections with colors (RGB format)
+
+// Skeleton connections with colors — matches BONE_COLORS in dwpose_temporal_editor.js
 const SKELETON_CONNECTIONS = [
-    // Torso
-    [KEYPOINTS.NECK, KEYPOINTS.R_SHOULDER, "#FF0000"],
-    [KEYPOINTS.NECK, KEYPOINTS.L_SHOULDER, "#00FF00"],
-    [KEYPOINTS.R_SHOULDER, KEYPOINTS.R_ELBOW, "#FF0000"],
-    [KEYPOINTS.L_SHOULDER, KEYPOINTS.L_ELBOW, "#00FF00"],
-    [KEYPOINTS.R_ELBOW, KEYPOINTS.R_WRIST, "#FF0000"],
-    [KEYPOINTS.L_ELBOW, KEYPOINTS.L_WRIST, "#00FF00"],
-    // Spine to hips
-    [KEYPOINTS.NECK, KEYPOINTS.R_HIP, "#FFFF00"],
-    [KEYPOINTS.NECK, KEYPOINTS.L_HIP, "#FF00FF"],
-    // Legs
-    [KEYPOINTS.R_HIP, KEYPOINTS.R_KNEE, "#FFFF00"],
-    [KEYPOINTS.L_HIP, KEYPOINTS.L_KNEE, "#FF00FF"],
-    [KEYPOINTS.R_KNEE, KEYPOINTS.R_ANKLE, "#FFFF00"],
-    [KEYPOINTS.L_KNEE, KEYPOINTS.L_ANKLE, "#FF00FF"],
-    [KEYPOINTS.R_ANKLE, KEYPOINTS.R_TOE, "#FFFF00"],
-    [KEYPOINTS.L_ANKLE, KEYPOINTS.L_TOE, "#FF00FF"],
-    // Head
-    [KEYPOINTS.NECK, KEYPOINTS.NOSE, "#0000FF"],
-    [KEYPOINTS.NOSE, KEYPOINTS.R_EYE, "#0000FF"],
-    [KEYPOINTS.NOSE, KEYPOINTS.L_EYE, "#0000FF"],
-    [KEYPOINTS.R_EYE, KEYPOINTS.R_EAR, "#0000FF"],
-    [KEYPOINTS.L_EYE, KEYPOINTS.L_EAR, "#0000FF"],
+    [KEYPOINTS.NECK,      KEYPOINTS.R_SHOULDER, "#0000ff"],  // R arm: blue
+    [KEYPOINTS.NECK,      KEYPOINTS.L_SHOULDER, "#00ff00"],  // L arm: green
+    [KEYPOINTS.R_SHOULDER,KEYPOINTS.R_ELBOW,    "#0000ff"],
+    [KEYPOINTS.R_ELBOW,   KEYPOINTS.R_WRIST,    "#0000ff"],
+    [KEYPOINTS.L_SHOULDER,KEYPOINTS.L_ELBOW,    "#00ff00"],
+    [KEYPOINTS.L_ELBOW,   KEYPOINTS.L_WRIST,    "#00ff00"],
+    [KEYPOINTS.NECK,      KEYPOINTS.R_HIP,      "#00ffff"],  // R torso: cyan
+    [KEYPOINTS.NECK,      KEYPOINTS.L_HIP,      "#ff00ff"],  // L torso: magenta
+    [KEYPOINTS.R_HIP,     KEYPOINTS.R_KNEE,     "#00ffff"],  // R leg: cyan
+    [KEYPOINTS.R_KNEE,    KEYPOINTS.R_ANKLE,    "#00ffff"],
+    [KEYPOINTS.R_ANKLE,   KEYPOINTS.R_TOE,      "#00b4ff"],
+    [KEYPOINTS.L_HIP,     KEYPOINTS.L_KNEE,     "#ff00ff"],  // L leg: magenta
+    [KEYPOINTS.L_KNEE,    KEYPOINTS.L_ANKLE,    "#ff00ff"],
+    [KEYPOINTS.L_ANKLE,   KEYPOINTS.L_TOE,      "#b400ff"],
+    [KEYPOINTS.NECK,      KEYPOINTS.NOSE,       "#ffff00"],  // head: yellow→gray
+    [KEYPOINTS.NOSE,      KEYPOINTS.R_EYE,      "#c8c8c8"],
+    [KEYPOINTS.NOSE,      KEYPOINTS.L_EYE,      "#c8c8c8"],
+    [KEYPOINTS.R_EYE,     KEYPOINTS.R_EAR,      "#969696"],
+    [KEYPOINTS.L_EYE,     KEYPOINTS.L_EAR,      "#969696"],
+];
+const RHAND_COLOR = "#ff6400";
+const LHAND_COLOR = "#64c800";
+
+// Per-joint dot colors — matches JOINT_COLORS in dwpose_temporal_editor.js
+const BODY_JOINT_COLORS = [
+    "#ffff00",  // 0  NOSE
+    "#00ffff",  // 1  NECK
+    "#0000ff",  // 2  R_SHLDR
+    "#0000ff",  // 3  R_ELBOW
+    "#0000ff",  // 4  R_WRIST
+    "#00ff00",  // 5  L_SHLDR
+    "#00ff00",  // 6  L_ELBOW
+    "#00ff00",  // 7  L_WRIST
+    "#00ffff",  // 8  R_HIP
+    "#00ffff",  // 9  R_KNEE
+    "#00ffff",  // 10 R_ANKLE
+    "#ff00ff",  // 11 L_HIP
+    "#ff00ff",  // 12 L_KNEE
+    "#ff00ff",  // 13 L_ANKLE
+    "#c8c8c8",  // 14 R_EYE
+    "#c8c8c8",  // 15 L_EYE
+    "#969696",  // 16 R_EAR
+    "#969696",  // 17 L_EAR
+    "#b400ff",  // 18 L_TOE
+    "#00b4ff",  // 19 R_TOE
 ];
 
 // Cluster definitions with widget mappings (Full Freedom - Independent widgets)
@@ -263,7 +283,7 @@ class DWPosePreviewWidget {
             flex-direction: column;
             gap: 6px;
             padding: 8px;
-            background: #1e1e1e;
+            background: #111420;
             border-radius: 4px;
         `;
 
@@ -283,7 +303,7 @@ class DWPosePreviewWidget {
         this.canvas.style.cssText = `
             width: 100%;
             height: auto;
-            border: 1px solid #444;
+            border: 1px solid #2c3352;
             border-radius: 4px;
             cursor: default;
         `;
@@ -372,16 +392,16 @@ class DWPosePreviewWidget {
         btn.textContent = text;
         btn.style.cssText = `
             padding: 4px 8px;
-            background: #444;
-            color: #fff;
-            border: 1px solid #666;
+            background: #1d2138;
+            color: #d4ddf4;
+            border: 1px solid #2c3352;
             border-radius: 4px;
             cursor: pointer;
             font-size: 11px;
         `;
         btn.addEventListener("click", onClick);
-        btn.addEventListener("mouseenter", () => btn.style.background = "#555");
-        btn.addEventListener("mouseleave", () => btn.style.background = "#444");
+        btn.addEventListener("mouseenter", () => btn.style.background = "#252c44");
+        btn.addEventListener("mouseleave", () => btn.style.background = "#1d2138");
         return btn;
     }
     
@@ -407,6 +427,24 @@ class DWPosePreviewWidget {
             pair.range.value = value;
             pair.num.value = isFloat ? parseFloat(value).toFixed(2) : String(Math.round(value));
         }
+        if (!this.isDragging) this.logAction("widget_set", { name, value });
+    }
+
+    // ─── Debug trace → POST /magos-debug/user-action ──────────────────────
+    isDebugOn() {
+        const w = this.getWidget("debug_log");
+        return !!(w && w.value);
+    }
+    logAction(action, payload) {
+        if (!this.isDebugOn()) return;
+        try {
+            fetch("/magos-debug/user-action", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ node: "Retargeter-JS", action, payload: payload || {} }),
+                keepalive: true,
+            }).catch(() => {});
+        } catch (_) {}
     }
 
     // ─── Collapsible control panel ────────────────────────────────────────────
@@ -450,21 +488,21 @@ class DWPosePreviewWidget {
         ];
 
         const panel = document.createElement('div');
-        panel.style.cssText = `width:100%;background:#252525;border:1px solid #383838;
-            border-radius:4px;padding:5px 6px;box-sizing:border-box;font-size:11px;color:#bbb;`;
+        panel.style.cssText = `width:100%;background:#141828;border:1px solid #2c3352;
+            border-radius:4px;padding:5px 6px;box-sizing:border-box;font-size:11px;color:#b0bcd4;`;
 
         const makeGroup = (title, params, onReset) => {
             const group = document.createElement('div');
-            group.style.cssText = 'margin-bottom:3px;border:1px solid #333;border-radius:3px;overflow:hidden;';
+            group.style.cssText = 'margin-bottom:3px;border:1px solid #252a42;border-radius:3px;overflow:hidden;';
 
             let expanded = false;
             const header = document.createElement('div');
             header.style.cssText = `display:flex;align-items:center;justify-content:space-between;
-                padding:4px 7px;background:#2e2e2e;cursor:pointer;user-select:none;`;
-            header.innerHTML = `<span style="font-weight:bold;color:#ccc;">${title}</span><span class="arrow" style="color:#666;font-size:9px;">▶</span>`;
+                padding:4px 7px;background:#191f36;cursor:pointer;user-select:none;`;
+            header.innerHTML = `<span style="font-weight:bold;color:#b0bcd4;">${title}</span><span class="arrow" style="color:#4a5a78;font-size:9px;">▶</span>`;
 
             const body = document.createElement('div');
-            body.style.cssText = 'display:none;padding:5px 7px 4px;background:#262626;';
+            body.style.cssText = 'display:none;padding:5px 7px 4px;background:#111828;';
 
             header.addEventListener('click', () => {
                 expanded = !expanded;
@@ -479,7 +517,7 @@ class DWPosePreviewWidget {
             if (onReset) {
                 const rb = document.createElement('button');
                 rb.textContent = '↺ Reset ' + title;
-                rb.style.cssText = 'margin-top:4px;padding:2px 7px;background:#333;color:#888;border:1px solid #555;border-radius:3px;cursor:pointer;font-size:10px;width:100%;';
+                rb.style.cssText = 'margin-top:4px;padding:2px 7px;background:#1a2038;color:#7888a8;border:1px solid #2c3352;border-radius:3px;cursor:pointer;font-size:10px;width:100%;';
                 rb.addEventListener('click', onReset);
                 body.appendChild(rb);
             }
@@ -532,7 +570,7 @@ class DWPosePreviewWidget {
         const mkDefaultBtn = (label, side) => {
             const b = document.createElement('button');
             b.textContent = label;
-            b.style.cssText = 'flex:1;padding:2px 4px;background:#1a3a4a;color:#88ccee;border:1px solid #2a6080;border-radius:3px;cursor:pointer;font-size:10px;';
+            b.style.cssText = 'flex:1;padding:2px 4px;background:#142840;color:#5bc4ff;border:1px solid #1e4868;border-radius:3px;cursor:pointer;font-size:10px;';
             b.addEventListener('click', () => this._applyDefaultHand(side));
             return b;
         };
@@ -550,7 +588,7 @@ class DWPosePreviewWidget {
 
         const lbl = document.createElement('span');
         lbl.textContent = label;
-        lbl.style.cssText = 'color:#888;font-size:10px;min-width:52px;flex-shrink:0;';
+        lbl.style.cssText = 'color:#7888a8;font-size:10px;min-width:52px;flex-shrink:0;';
 
         row.appendChild(lbl);
         row.appendChild(this._makeInputPair(widgetName, min, max, step));
@@ -566,13 +604,13 @@ class DWPosePreviewWidget {
         range.type = 'range';
         range.min = min; range.max = max; range.step = step;
         range.value = isFloat ? 1 : 0;
-        range.style.cssText = 'flex:1;min-width:0;cursor:pointer;accent-color:#5a8a5a;';
+        range.style.cssText = 'flex:1;min-width:0;cursor:pointer;accent-color:#5bc4ff;';
 
         const num = document.createElement('input');
         num.type = 'number';
         num.min = min; num.max = max; num.step = step;
         num.value = isFloat ? '1.00' : '0';
-        num.style.cssText = 'width:54px;flex-shrink:0;background:#2a2a2a;color:#ddd;border:1px solid #444;' +
+        num.style.cssText = 'width:54px;flex-shrink:0;background:#0e1020;color:#d4ddf4;border:1px solid #2c3352;' +
             'border-radius:3px;padding:1px 3px;font-size:10px;box-sizing:border-box;text-align:right;';
 
         const apply = (v) => {
@@ -881,12 +919,12 @@ class DWPosePreviewWidget {
         const ph = this.poseHeight;
 
         // Ghost zone: clear whole canvas with a slightly darker shade
-        ctx.fillStyle = "#1e1e1e";
+        ctx.fillStyle = "#09090f";
         ctx.fillRect(0, 0, cw, ch);
 
         if (!this.dataLoaded || !this.origKps) {
-            ctx.fillStyle = "#888";
-            ctx.font = "14px sans-serif";
+            ctx.fillStyle = "#5a6a88";
+            ctx.font = "14px 'Inter',sans-serif";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("Please hit Queue Prompt once to load pose data", cw / 2, ch / 2);
@@ -899,7 +937,7 @@ class DWPosePreviewWidget {
         ctx.scale(this.viewZoom, this.viewZoom);
 
         // Pose area background
-        ctx.fillStyle = "#2a2a2a";
+        ctx.fillStyle = "#0e0e1a";
         ctx.fillRect(0, 0, pw, ph);
 
         // Draw background image if available (fills pose area only)
@@ -922,12 +960,12 @@ class DWPosePreviewWidget {
         // Draw hands if available (suppress when the corresponding wrist is disabled)
         const hands = this.transformHands(newKps);
         if (hands.rhand && !this.disabledPoints.body.has(KEYPOINTS.R_WRIST)) {
-            this.drawHand(hands.rhand, "#FF6666", 1.0);
-            this.drawRotationRing(newKps[KEYPOINTS.R_WRIST], this.getWidgetValue("right_hand_rotation", 0), "#FF6666");
+            this.drawHand(hands.rhand, RHAND_COLOR, 1.0);
+            this.drawRotationRing(newKps[KEYPOINTS.R_WRIST], this.getWidgetValue("right_hand_rotation", 0), RHAND_COLOR);
         }
         if (hands.lhand && !this.disabledPoints.body.has(KEYPOINTS.L_WRIST)) {
-            this.drawHand(hands.lhand, "#66FF66", 1.0);
-            this.drawRotationRing(newKps[KEYPOINTS.L_WRIST], this.getWidgetValue("left_hand_rotation", 0), "#66FF66");
+            this.drawHand(hands.lhand, LHAND_COLOR, 1.0);
+            this.drawRotationRing(newKps[KEYPOINTS.L_WRIST], this.getWidgetValue("left_hand_rotation", 0), LHAND_COLOR);
         }
         
         // Draw face if enabled
@@ -1040,7 +1078,9 @@ class DWPosePreviewWidget {
                     if (this.activePoint.idx >= 48 && this.activePoint.idx <= 67) pName = `Mouth_${this.activePoint.idx}`;
                     else pName = `Face_${this.activePoint.idx}`;
                 } else {
-                    pName = `${this.activePoint.group}_${this.activePoint.idx}`.toUpperCase();
+                    const side = this.activePoint.group === 'rhand' ? 'R' : 'L';
+                    const fingerName = HAND_JOINT_LABELS[this.activePoint.idx] || String(this.activePoint.idx);
+                    pName = `${side}: ${fingerName}`;
                 }
 
                 // Draw taller tooltip with point name
@@ -1105,14 +1145,14 @@ class DWPosePreviewWidget {
             ctx.stroke();
         }
         
-        // Draw keypoints
+        // Draw keypoints with per-joint colors
         const pointRadius = isOriginal ? 3 : 5;
-        ctx.fillStyle = isOriginal ? "#808080" : "#000000";
-        
         for (let i = 0; i < kps.length; i++) {
             const p = kps[i];
             if (!p || (p[0] === 0 && p[1] === 0)) continue;
-            
+            ctx.fillStyle = isOriginal
+                ? "#606060"
+                : (BODY_JOINT_COLORS[i] || "#ffffff");
             ctx.beginPath();
             ctx.arc(p[0], p[1], pointRadius, 0, Math.PI * 2);
             ctx.fill();
@@ -1439,6 +1479,7 @@ class DWPosePreviewWidget {
                 this.isDragging = true;
                 this.dragMode = 'GIZMO_DRAG';
                 this.dragStartMouse = { x: mouseX, y: mouseY };
+                this.logAction("gizmo_drag_start", { group: clickedPoint.group, idx: clickedPoint.idx, mouseX, mouseY });
                 
                 // Initialize if it doesn't exist
                 if (!this.microOffsets[clickedPoint.group]) this.microOffsets[clickedPoint.group] = {};
@@ -1539,15 +1580,16 @@ class DWPosePreviewWidget {
             this.isDragging = true;
             this.dragMode = 'MOVE';
             this.dragStart = { x: mouseX, y: mouseY };
-            
+
             // Store starting offset values
             const cluster = CLUSTERS[clickedCluster];
             this.dragStartValues = {};
             for (const w of cluster.offsetWidgets) {
                 this.dragStartValues[w] = this.getWidgetValue(w, 0);
             }
-            
+
             this.canvas.style.cursor = "grabbing";
+            this.logAction("cluster_activate", { cluster: clickedCluster });
         } else {
             // Click on empty space deselects
             this.activeCluster = null;
@@ -1758,6 +1800,22 @@ class DWPosePreviewWidget {
     onMouseUp() {
         if (this.dragMode === 'GIZMO_DRAG') {
             this.saveMicroOffsets(); // Flush final position on release
+            if (this.activePoint) {
+                const g = this.activePoint.group, i = this.activePoint.idx;
+                const ofs = this.microOffsets[g]?.[i] || { x: 0, y: 0 };
+                this.logAction("gizmo_drag_end", { group: g, idx: i, finalOffset: ofs });
+            }
+        } else if (this.dragMode === 'ROTATE_CLUSTER' && this.rotatingCluster) {
+            const cluster = CLUSTERS[this.rotatingCluster];
+            const val = this.getWidgetValue(cluster?.rotationWidget, 0);
+            this.logAction("cluster_rotate_end", { cluster: this.rotatingCluster, value: val });
+        } else if (this.dragMode === 'ROTATE' && this.rotatingHand) {
+            const wName = this.rotatingHand === 'right' ? 'right_hand_rotation' : 'left_hand_rotation';
+            this.logAction("hand_rotate_end", { hand: this.rotatingHand, value: this.getWidgetValue(wName, 0) });
+        } else if (this.dragMode === 'SCALE' && this.activeCluster) {
+            this.logAction("cluster_scale_end", { cluster: this.activeCluster });
+        } else if (this.dragMode === 'MOVE' && this.activeCluster) {
+            this.logAction("cluster_move_end", { cluster: this.activeCluster });
         }
         this.isDragging = false;
         this.dragMode = null;
@@ -1911,35 +1969,23 @@ class DWPosePreviewWidget {
         return result;
     }
     
-    // Draw hand skeleton
+    // Draw hand skeleton — flat hand color, no permanent labels
     drawHand(kps, color, alpha = 1.0) {
         if (!kps || kps.length < 21) return;
-        
         const ctx = this.ctx;
         ctx.globalAlpha = alpha;
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
-        
-        // Draw all finger connections
-        const allConnections = [
-            ...Object.values(HAND_CONNECTIONS).flat(),
-            ...Object.values(L_HAND_CONNECTIONS).flat()
-        ];
-        
-        for (const [p1Idx, p2Idx] of allConnections) {
-            const p1 = kps[p1Idx];
-            const p2 = kps[p2Idx];
+        for (const [a, b] of HAND_CONNECTIONS) {
+            const p1 = kps[a], p2 = kps[b];
             if (!p1 || !p2) continue;
             if (p1[0] === 0 && p1[1] === 0) continue;
             if (p2[0] === 0 && p2[1] === 0) continue;
-            
             ctx.beginPath();
             ctx.moveTo(p1[0], p1[1]);
             ctx.lineTo(p2[0], p2[1]);
             ctx.stroke();
         }
-        
-        // Draw keypoints
         ctx.fillStyle = color;
         for (let i = 0; i < kps.length; i++) {
             const p = kps[i];
@@ -1948,7 +1994,6 @@ class DWPosePreviewWidget {
             ctx.arc(p[0], p[1], 3, 0, Math.PI * 2);
             ctx.fill();
         }
-        
         ctx.globalAlpha = 1.0;
     }
     

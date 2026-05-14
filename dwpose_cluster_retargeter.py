@@ -18,6 +18,86 @@ from typing import Dict, Optional, Tuple, Any
 # Web directory for JavaScript extension
 WEB_DIRECTORY = "./js"
 
+# ---------------------------------------------------------------------------
+# DWPose skeleton constants — match dwpose_temporal_editor.js exactly
+# ---------------------------------------------------------------------------
+# Body joint names (20 joints, OpenPose order)
+_BODY_JOINT_NAMES = [
+    "NOSE", "NECK", "R_SHLDR", "R_ELBOW", "R_WRIST",
+    "L_SHLDR", "L_ELBOW", "L_WRIST", "R_HIP", "R_KNEE",
+    "R_ANKLE", "L_HIP", "L_KNEE", "L_ANKLE", "R_EYE",
+    "L_EYE", "R_EAR", "L_EAR", "L_TOE", "R_TOE",
+]
+
+# Body joint colors — BGR, matching JOINT_COLORS in dwpose_temporal_editor.js
+_BODY_JOINT_COLORS_BGR = [
+    (  0, 255, 255),  # 0  NOSE      #ffff00 yellow
+    (255, 255,   0),  # 1  NECK      #00ffff cyan
+    (255,   0,   0),  # 2  R_SHLDR   #0000ff blue
+    (255,   0,   0),  # 3  R_ELBOW   #0000ff blue
+    (255,   0,   0),  # 4  R_WRIST   #0000ff blue
+    (  0, 255,   0),  # 5  L_SHLDR   #00ff00 green
+    (  0, 255,   0),  # 6  L_ELBOW   #00ff00 green
+    (  0, 255,   0),  # 7  L_WRIST   #00ff00 green
+    (255, 255,   0),  # 8  R_HIP     #00ffff cyan
+    (255, 255,   0),  # 9  R_KNEE    #00ffff cyan
+    (255, 255,   0),  # 10 R_ANKLE   #00ffff cyan
+    (255,   0, 255),  # 11 L_HIP     #ff00ff magenta
+    (255,   0, 255),  # 12 L_KNEE    #ff00ff magenta
+    (255,   0, 255),  # 13 L_ANKLE   #ff00ff magenta
+    (200, 200, 200),  # 14 R_EYE     #c8c8c8 light gray
+    (200, 200, 200),  # 15 L_EYE     #c8c8c8 light gray
+    (150, 150, 150),  # 16 R_EAR     #969696 gray
+    (150, 150, 150),  # 17 L_EAR     #969696 gray
+    (255,   0, 180),  # 18 L_TOE     #b400ff violet
+    (255, 180,   0),  # 19 R_TOE     #00b4ff azure
+]
+
+# Body bone connections — matching BONE_COLORS/BODY_CONNECTIONS in dwpose_temporal_editor.js
+_BODY_BONE_CONNECTIONS = [
+    (1,  2,  (255,   0,   0)),  # NECK→R_SHLDR    blue
+    (1,  5,  (  0, 255,   0)),  # NECK→L_SHLDR    green
+    (2,  3,  (255,   0,   0)),  # R_SHLDR→R_ELBOW blue
+    (3,  4,  (255,   0,   0)),  # R_ELBOW→R_WRIST blue
+    (5,  6,  (  0, 255,   0)),  # L_SHLDR→L_ELBOW green
+    (6,  7,  (  0, 255,   0)),  # L_ELBOW→L_WRIST green
+    (1,  8,  (255, 255,   0)),  # NECK→R_HIP      cyan
+    (1, 11,  (255,   0, 255)),  # NECK→L_HIP      magenta
+    (8,  9,  (255, 255,   0)),  # R_HIP→R_KNEE    cyan
+    (9,  10, (255, 255,   0)),  # R_KNEE→R_ANKLE  cyan
+    (10, 19, (255, 180,   0)),  # R_ANKLE→R_TOE   azure
+    (11, 12, (255,   0, 255)),  # L_HIP→L_KNEE    magenta
+    (12, 13, (255,   0, 255)),  # L_KNEE→L_ANKLE  magenta
+    (13, 18, (255,   0, 180)),  # L_ANKLE→L_TOE   violet
+    (1,  0,  (  0, 255, 255)),  # NECK→NOSE       yellow
+    (0,  14, (200, 200, 200)),  # NOSE→R_EYE      gray
+    (0,  15, (200, 200, 200)),  # NOSE→L_EYE      gray
+    (14, 16, (150, 150, 150)),  # R_EYE→R_EAR     dark gray
+    (15, 17, (150, 150, 150)),  # L_EYE→L_EAR     dark gray
+]
+
+_RHAND_COLOR_BGR = (  0, 100, 255)  # #ff6400 orange
+_LHAND_COLOR_BGR = (  0, 200, 100)  # #64c800 lime
+
+# Hand joint names (21 keypoints: 0=wrist, 1-4=thumb, 5-8=index, 9-12=mid, 13-16=ring, 17-20=pinky)
+_HAND_JOINT_NAMES = [
+    "Wrist",
+    "Thumb 1", "Thumb 2", "Thumb 3", "Thumb 4",
+    "Index 1", "Index 2", "Index 3", "Index 4",
+    "Mid 1",   "Mid 2",   "Mid 3",   "Mid 4",
+    "Ring 1",  "Ring 2",  "Ring 3",  "Ring 4",
+    "Pinky 1", "Pinky 2", "Pinky 3", "Pinky 4",
+]
+
+# Hand connections (same as JS HAND_CONNECTIONS)
+_HAND_CONNECTIONS = [
+    (0,  1), (1,  2), (2,  3), (3,  4),
+    (0,  5), (5,  6), (6,  7), (7,  8),
+    (0,  9), (9,  10),(10, 11),(11, 12),
+    (0, 13),(13, 14),(14, 15),(15, 16),
+    (0, 17),(17, 18),(18, 19),(19, 20),
+]
+
 
 class DWPoseClusterRetargeter:
     
@@ -102,6 +182,9 @@ class DWPoseClusterRetargeter:
                 "left_hand_rotation":  ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 0.1}),
                 # Canvas reference frame — which frame index to display in the retargeter canvas
                 "reference_frame_index": ("INT", {"default": 0, "min": 0, "max": 9999, "step": 1}),
+                "reference_source": (["Frame Index", "Ref Frame"], {"default": "Frame Index",
+                    "tooltip": "Ref Frame: uses the clean front-view snapshot from the Editor's ⊕ Ref Frame button."}),
+                "debug_log": ("BOOLEAN", {"default": False, "label_on": "Debug: On", "label_off": "Debug: Off", "tooltip": "Write full trace to CMD + logs/session_*.log"}),
             },
             "optional": {
                 "reference_image": ("IMAGE",),
@@ -115,12 +198,21 @@ class DWPoseClusterRetargeter:
                 "micro_offsets_json":    ("STRING", {"default": "{}"}),
                 "disabled_points_json": ("STRING", {"default": "{}"}),
                 "default_hands_json":   ("STRING", {"default": "{}"}),
+                "keyframe_data": ("KEYFRAME_DATA",),
+                # Optional: when wired, the retargeter projects each transformed frame
+                # through the editor's per-frame camera matrix AFTER applying 2D cluster
+                # transforms in front-space. This avoids the "transform a perspective
+                # photo" failure when the editor's render mode is set to a camera view.
+                # Requires keyframe_data to be wired too (Z is read from it per joint).
+                "camera_matrices": ("CAMERA_MATRICES",),
+                # Retargeter-side projection mode (only used when camera_matrices is connected).
+                "camera_projection": (["Perspective", "Orthographic"], {"default": "Perspective"}),
             },
         }
     
     CATEGORY = "MAGOS Nodes/Retargeting"
-    RETURN_TYPES = ("POSEDATA", "IMAGE", "IMAGE")
-    RETURN_NAMES = ("modified_pose_data", "preview", "face_images")
+    RETURN_TYPES = ("POSEDATA", "IMAGE", "IMAGE", "POSEDATA")
+    RETURN_NAMES = ("modified_pose_data", "preview", "face_images", "ref_frame_pose")
     FUNCTION = "retarget_pose"
     OUTPUT_NODE = True
     
@@ -202,15 +294,9 @@ class DWPoseClusterRetargeter:
         Apply micro-offsets as a final additive layer AFTER cluster math.
         Structure: {"body": {"4": {"x": 5, "y": -2}}, "lhand": {...}, "rhand": {...}}
         """
-        # Apply body micro-offsets
-        if "body" in micro_offsets:
-            for idx_str, offset in micro_offsets["body"].items():
-                idx = int(idx_str)
-                if 0 <= idx < len(new_kps):
-                    dx = offset.get("x", 0)
-                    dy = offset.get("y", 0)
-                    new_kps[idx] = new_kps[idx] + np.array([dx, dy])
-        
+        # Body micro-offsets are applied by the caller BEFORE hand transforms so the
+        # hand anchor follows the final wrist position; do not re-apply them here.
+
         # Apply hand micro-offsets
         if new_rhand is not None and "rhand" in micro_offsets:
             for idx_str, offset in micro_offsets["rhand"].items():
@@ -407,10 +493,21 @@ class DWPoseClusterRetargeter:
         if left_leg_rotation != 0.0:
             self._rotate_cluster(new_kps, [self.L_KNEE, self.L_ANKLE, self.L_TOE], new_kps[self.L_HIP], left_leg_rotation)
 
+        # Body micro-offsets must land BEFORE the hand block: the hand anchors on
+        # new_kps[R_WRIST]/[L_WRIST], and a wrist micro-offset would otherwise leave
+        # the hand behind at the pre-offset wrist position.
+        if micro_offsets and "body" in micro_offsets:
+            for idx_str, offset in micro_offsets["body"].items():
+                idx = int(idx_str)
+                if 0 <= idx < len(new_kps):
+                    dx = offset.get("x", 0)
+                    dy = offset.get("y", 0)
+                    new_kps[idx] = new_kps[idx] + np.array([dx, dy])
+
         # Initialize hand arrays for micro-offsets
         new_rhand = None
         new_lhand = None
-        
+
         if isinstance(frame, dict):
             new_frame = {k: (v.copy() if isinstance(v, np.ndarray) else v) for k, v in frame.items()}
             new_frame["kps_body"] = new_kps
@@ -553,10 +650,11 @@ class DWPoseClusterRetargeter:
 
         # Add transformed face to frame
         if new_face is not None:
+            new_face_np = np.array(new_face, dtype=np.float32)
             if isinstance(new_frame, dict):
-                new_frame["kps_face"] = new_face
+                new_frame["kps_face"] = new_face_np
             else:
-                new_frame.kps_face = new_face
+                new_frame.kps_face = new_face_np
         
         # Return metadata for preview (include hands and face)
         preview_meta = {
@@ -614,82 +712,74 @@ class DWPoseClusterRetargeter:
         new_kps = preview_meta["new_kps"]
         confidence = preview_meta["confidence"]
         
-        # Define skeleton connections with colors (BGR format)
-        # Format: (point1_idx, point2_idx, color)
-        skeleton_connections = [
-            # Torso
-            (self.NECK, self.R_SHOULDER, (255, 0, 0)),      # Blue - Right shoulder
-            (self.NECK, self.L_SHOULDER, (0, 255, 0)),      # Green - Left shoulder
-            (self.R_SHOULDER, self.R_ELBOW, (255, 0, 0)),   # Blue - Right upper arm
-            (self.L_SHOULDER, self.L_ELBOW, (0, 255, 0)),   # Green - Left upper arm
-            (self.R_ELBOW, self.R_WRIST, (255, 0, 0)),      # Blue - Right forearm
-            (self.L_ELBOW, self.L_WRIST, (0, 255, 0)),      # Green - Left forearm
-            # Spine to hips
-            (self.NECK, self.R_HIP, (255, 255, 0)),         # Cyan - Right hip
-            (self.NECK, self.L_HIP, (255, 0, 255)),         # Magenta - Left hip
-            # Legs
-            (self.R_HIP, self.R_KNEE, (255, 255, 0)),       # Cyan - Right thigh
-            (self.L_HIP, self.L_KNEE, (255, 0, 255)),       # Magenta - Left thigh
-            (self.R_KNEE, self.R_ANKLE, (255, 255, 0)),     # Cyan - Right shin
-            (self.L_KNEE, self.L_ANKLE, (255, 0, 255)),     # Magenta - Left shin
-            (self.R_ANKLE, self.R_TOE, (255, 255, 0)),      # Cyan - Right foot
-            (self.L_ANKLE, self.L_TOE, (255, 0, 255)),      # Magenta - Left foot
-            # Head
-            (self.NECK, self.NOSE, (0, 0, 255)),            # Red - Neck to nose
-            (self.NOSE, self.R_EYE, (0, 0, 255)),           # Red - Right eye
-            (self.NOSE, self.L_EYE, (0, 0, 255)),           # Red - Left eye
-            (self.R_EYE, self.R_EAR, (0, 0, 255)),          # Red - Right ear
-            (self.L_EYE, self.L_EAR, (0, 0, 255)),          # Red - Left ear
-        ]
-        
-        def draw_skeleton(kps: np.ndarray, color_alpha: float = 1.0, is_original: bool = True):
-            """Draw a skeleton on the canvas."""
-            line_thickness = 2 if is_original else 3
-            point_radius = 3 if is_original else 5
-            
-            for p1_idx, p2_idx, color in skeleton_connections:
-                # Check confidence for both points
-                if (confidence[p1_idx] < self.CONFIDENCE_THRESHOLD or 
-                    confidence[p2_idx] < self.CONFIDENCE_THRESHOLD):
+        orig_rhand = preview_meta.get("orig_rhand")
+        orig_lhand = preview_meta.get("orig_lhand")
+        new_rhand  = preview_meta.get("new_rhand")
+        new_lhand  = preview_meta.get("new_lhand")
+
+        font      = cv2.FONT_HERSHEY_SIMPLEX
+        font_body = 0.32
+        lw_body   = 1
+
+        def _pt_ok(kps, idx, conf=None):
+            if idx >= len(kps):
+                return False
+            p = kps[idx]
+            if p is None or np.any(np.isnan(p)):
+                return False
+            if conf is not None and conf[idx] < self.CONFIDENCE_THRESHOLD:
+                return False
+            return True
+
+        def draw_body(kps: np.ndarray, alpha: float, label_joints: bool):
+            for a, b, color in _BODY_BONE_CONNECTIONS:
+                if not _pt_ok(kps, a, confidence) or not _pt_ok(kps, b, confidence):
                     continue
-                
-                p1 = kps[p1_idx]
-                p2 = kps[p2_idx]
-                
-                # Skip if points are invalid
-                if np.any(np.isnan(p1)) or np.any(np.isnan(p2)):
+                c = tuple(int(v * alpha) for v in color)
+                cv2.line(canvas, (int(kps[a][0]), int(kps[a][1])),
+                         (int(kps[b][0]), int(kps[b][1])), c, lw_body, cv2.LINE_AA)
+            for idx in range(len(kps)):
+                if not _pt_ok(kps, idx, confidence):
                     continue
-                if np.any(p1 == 0) or np.any(p2 == 0):
+                jc = tuple(int(v * alpha) for v in _BODY_JOINT_COLORS_BGR[idx])
+                r  = 4 if label_joints else 3
+                cv2.circle(canvas, (int(kps[idx][0]), int(kps[idx][1])), r, jc, -1, cv2.LINE_AA)
+                if label_joints:
+                    name = _BODY_JOINT_NAMES[idx] if idx < len(_BODY_JOINT_NAMES) else str(idx)
+                    tx, ty = int(kps[idx][0]) + 5, int(kps[idx][1]) - 4
+                    cv2.putText(canvas, name, (tx, ty), font, font_body,
+                                (0, 0, 0), 2, cv2.LINE_AA)
+                    cv2.putText(canvas, name, (tx, ty), font, font_body,
+                                jc, 1, cv2.LINE_AA)
+
+        def draw_hand(kps, hand_bgr: tuple, alpha: float):
+            if kps is None or len(kps) == 0:
+                return
+            kps = np.array(kps)
+            c = tuple(int(v * alpha) for v in hand_bgr)
+            for a, b in _HAND_CONNECTIONS:
+                if a >= len(kps) or b >= len(kps):
                     continue
-                
-                # Apply alpha to color
-                adjusted_color = tuple(int(c * color_alpha) for c in color)
-                
-                # Draw line
-                cv2.line(
-                    canvas,
-                    (int(p1[0]), int(p1[1])),
-                    (int(p2[0]), int(p2[1])),
-                    adjusted_color,
-                    line_thickness,
-                    cv2.LINE_AA
-                )
-            
-            # Draw keypoints
-            for idx, point in enumerate(kps):
-                if confidence[idx] < self.CONFIDENCE_THRESHOLD:
+                pa, pb = kps[a], kps[b]
+                if np.any(pa == 0) or np.any(pb == 0):
                     continue
-                if np.any(np.isnan(point)) or np.any(point == 0):
+                cv2.line(canvas, (int(pa[0]), int(pa[1])),
+                         (int(pb[0]), int(pb[1])), c, 1, cv2.LINE_AA)
+            for idx in range(len(kps)):
+                p = kps[idx]
+                if np.any(p == 0) or np.any(np.isnan(p)):
                     continue
-                
-                color = (128, 128, 128) if is_original else (0, 0, 0)
-                cv2.circle(canvas, (int(point[0]), int(point[1])), point_radius, color, -1, cv2.LINE_AA)
-        
-        # Draw original skeleton in lighter colors
-        draw_skeleton(orig_kps, color_alpha=0.4, is_original=True)
-        
-        # Draw new skeleton on top
-        draw_skeleton(new_kps, color_alpha=1.0, is_original=False)
+                cv2.circle(canvas, (int(p[0]), int(p[1])), 3, c, -1, cv2.LINE_AA)
+
+        # Draw original (faded, no labels)
+        draw_body(orig_kps, alpha=0.35, label_joints=False)
+        draw_hand(orig_rhand, _RHAND_COLOR_BGR, alpha=0.35)
+        draw_hand(orig_lhand, _LHAND_COLOR_BGR, alpha=0.35)
+
+        # Draw transformed (full opacity, with labels)
+        draw_body(new_kps, alpha=1.0, label_joints=True)
+        draw_hand(new_rhand, _RHAND_COLOR_BGR, alpha=1.0)
+        draw_hand(new_lhand, _LHAND_COLOR_BGR, alpha=1.0)
         
         # Convert back to RGB and ComfyUI format [B, H, W, C]
         canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
@@ -736,6 +826,90 @@ class DWPoseClusterRetargeter:
         grid = torch.nn.functional.affine_grid(theta, imgs.shape, align_corners=False)
         out = torch.nn.functional.grid_sample(imgs, grid, mode="bilinear", padding_mode="zeros", align_corners=False)
         return out.permute(0, 2, 3, 1)  # [N, H, W, C]
+
+    def _project_new_frames_inplace(
+        self,
+        new_frames: list,
+        kfd_frames: Dict[Any, Any],
+        extr_np: np.ndarray,
+        intr_np: np.ndarray,
+        dists_np: Optional[np.ndarray],
+        z_scale: float,
+        use_ortho: bool,
+        project_frame_pts,
+    ) -> None:
+        """Project each transformed frame's joints through E·K, in-place.
+
+        kfd_frames: editor-style {fi: {body, rhand, lhand, face}} with 4-coord points
+                    (x, y, conf, z). Used as the Z source — AAPoseMeta has no Z.
+        Mutates each frame in `new_frames`: kps_body / kps_rhand / kps_lhand / kps_face
+        are replaced with their projected (X, Y); kps_*_p arrays are kept aligned.
+        """
+        n_frames = min(len(new_frames), int(extr_np.shape[0]))
+
+        def _build_pts(kps2d, kps_p):
+            if kps2d is None:
+                return None
+            # kps2d may be ndarray (kps_body / kps_rhand / kps_lhand always are after
+            # _transform_frame), but kps_face can arrive as a plain list of [x, y]
+            # pairs when the face transform path didn't normalize it. Use bracket-chain
+            # indexing (kps2d[i][0]) which works for both.
+            n = len(kps2d)
+            return [[float(kps2d[i][0]), float(kps2d[i][1]),
+                     float(kps_p[i]) if kps_p is not None and i < len(kps_p) else 1.0]
+                    for i in range(n)]
+
+        def _z_lookup_from_kfd_group(kfd_frame: Optional[Dict[str, Any]], group: str, n: int):
+            if not kfd_frame:
+                return None
+            arr = kfd_frame.get(group)
+            if not arr:
+                return None
+            zs: list = []
+            for i in range(n):
+                if i < len(arr):
+                    pt = arr[i]
+                    z = float(pt[3]) if isinstance(pt, (list, tuple)) and len(pt) > 3 and pt[3] is not None else 0.0
+                else:
+                    z = 0.0
+                zs.append(z)
+            return zs
+
+        def _write_back(frame, attr: str, projected: Optional[list]):
+            """Write projected list of [px, py, conf] back into frame as kps_{attr} + kps_{attr}_p."""
+            if projected is None:
+                return
+            xy = np.array([[p[0], p[1]] for p in projected], dtype=np.float32)
+            cp = np.array([p[2] for p in projected], dtype=np.float32)
+            if isinstance(frame, dict):
+                frame[f"kps_{attr}"]   = xy
+                frame[f"kps_{attr}_p"] = cp
+            else:
+                setattr(frame, f"kps_{attr}",   xy)
+                setattr(frame, f"kps_{attr}_p", cp)
+
+        for fi in range(n_frames):
+            frame = new_frames[fi]
+            E = extr_np[fi]
+            K = intr_np[fi]
+            ortho_dist = float(dists_np[fi]) if (use_ortho and dists_np is not None) else None
+            kfd_frame = kfd_frames.get(fi) or kfd_frames.get(str(fi))
+
+            for attr, group in [("body", "body"), ("rhand", "rhand"),
+                                ("lhand", "lhand"), ("face", "face")]:
+                kps2d = (frame.get(f"kps_{attr}") if isinstance(frame, dict)
+                         else getattr(frame, f"kps_{attr}", None))
+                if kps2d is None or len(kps2d) == 0:
+                    continue
+                kps_p = (frame.get(f"kps_{attr}_p") if isinstance(frame, dict)
+                         else getattr(frame, f"kps_{attr}_p", None))
+                pts_in = _build_pts(kps2d, kps_p)
+                z_lookup = _z_lookup_from_kfd_group(kfd_frame, group, len(pts_in))
+                projected = project_frame_pts(
+                    pts_in, E, K, z_scale,
+                    ortho_dist=ortho_dist, z_lookup=z_lookup,
+                )
+                _write_back(frame, attr, projected)
 
     def retarget_pose(
         self,
@@ -790,7 +964,12 @@ class DWPoseClusterRetargeter:
         disabled_points_json: str = "{}",
         default_hands_json: str = "{}",
         reference_frame_index: int = 0,
+        reference_source: str = "Frame Index",
         source_images: Optional[torch.Tensor] = None,
+        keyframe_data: Optional[Dict[str, Any]] = None,
+        camera_matrices: Optional[Dict[str, Any]] = None,
+        camera_projection: str = "Perspective",
+        debug_log: bool = False,
     ) -> Tuple[Dict[str, Any], torch.Tensor]:
         """
         Main entry point for the node.
@@ -804,6 +983,20 @@ class DWPoseClusterRetargeter:
         Returns:
             Tuple of (modified_pose_data, preview_image)
         """
+        from .debug_logger import get_logger
+        rlog = get_logger("Retargeter", debug_log)
+        rlog.section("RETARGET START", {
+            "pose_data_type": type(pose_data).__name__,
+            "transfer_face": transfer_face,
+            "reference_frame_index": reference_frame_index,
+            "reference_image": reference_image,
+            "face_images": face_images,
+            "source_images": source_images,
+            "micro_offsets_json_len": len(micro_offsets_json or ""),
+            "disabled_points_json_len": len(disabled_points_json or ""),
+            "default_hands_json_len": len(default_hands_json or ""),
+        })
+
         # Parse micro_offsets_json from canvas widget
         try:
             micro_offsets = json.loads(micro_offsets_json) if micro_offsets_json else {}
@@ -877,11 +1070,42 @@ class DWPoseClusterRetargeter:
             "left_leg_rotation": left_leg_rotation,
         }
         
+        rlog.section("PARAMS PARSED", {
+            "input_frames": len(input_frames),
+            "micro_offsets.body": len((micro_offsets or {}).get("body", {})),
+            "micro_offsets.rhand": len((micro_offsets or {}).get("rhand", {})),
+            "micro_offsets.lhand": len((micro_offsets or {}).get("lhand", {})),
+            "micro_offsets.face": len((micro_offsets or {}).get("face", {})),
+            "disabled_points.body": len((disabled_points or {}).get("body", [])),
+            "default_hands": list((default_hands or {}).keys()),
+        })
+        rlog.widgets(params)
+
+        if (micro_offsets or {}).get("body"):
+            rlog.kv("micro_offsets.body (full)", micro_offsets["body"])
+
         # Process each frame
         preview_metas = []
         new_frames = []
-        for frame in input_frames:
+        for fi, frame in enumerate(input_frames):
+            rlog.section(f"FRAME {fi} — before transform", {}) if fi == reference_frame_index else None
             new_frame, preview_meta = self._transform_frame(frame, params, micro_offsets, disabled_points, default_hands)
+            if fi == reference_frame_index:
+                rlog.array("orig_kps",  preview_meta.get("orig_kps"))
+                rlog.array("new_kps",   preview_meta.get("new_kps"))
+                if preview_meta.get("orig_rhand") is not None:
+                    rlog.kv("orig_rhand[0] (body->hand ref)", preview_meta["orig_rhand"][0])
+                    rlog.kv("orig_kps[R_WRIST]", preview_meta["orig_kps"][self.R_WRIST])
+                    rlog.kv("new_kps[R_WRIST]",  preview_meta["new_kps"][self.R_WRIST])
+                    if preview_meta.get("new_rhand") is not None:
+                        rlog.kv("new_rhand[0] (should equal orig_rhand[0] + (new_wrist - orig_wrist))",
+                                preview_meta["new_rhand"][0])
+                if preview_meta.get("orig_lhand") is not None:
+                    rlog.kv("orig_lhand[0]", preview_meta["orig_lhand"][0])
+                    rlog.kv("orig_kps[L_WRIST]", preview_meta["orig_kps"][self.L_WRIST])
+                    rlog.kv("new_kps[L_WRIST]",  preview_meta["new_kps"][self.L_WRIST])
+                    if preview_meta.get("new_lhand") is not None:
+                        rlog.kv("new_lhand[0]", preview_meta["new_lhand"][0])
             if not transfer_face:
                 if isinstance(new_frame, dict):
                     new_frame.pop("kps_face", None)
@@ -890,11 +1114,67 @@ class DWPoseClusterRetargeter:
             new_frames.append(new_frame)
             preview_metas.append(preview_meta)
 
+        # ── Camera projection (optional) ─────────────────────────────────────
+        # When camera_matrices is wired, project the just-transformed front-space
+        # joints through each frame's E·K. This is the correct order of operations:
+        # cluster transforms in front-space first (so proportions and rotations
+        # behave as the user expects), THEN perspective projection. Doing it the
+        # other way around (editor projects, then retargeter scales) compounds
+        # 2D scale on already-foreshortened pixels and breaks the skeleton.
+        #
+        # Z values are pulled from keyframe_data (the editor's pure 3D pose stream),
+        # since AAPoseMeta's kps_body/kps_rhand/etc. are 2D-only.
+        projected_dims = None  # (W, H) when projection runs
+        if camera_matrices is not None:
+            if keyframe_data is None:
+                raise RuntimeError(
+                    "MagosPoseRetargeter: camera_matrices is connected but keyframe_data "
+                    "is not. Per-joint Z is required for camera projection — wire the "
+                    "Editor's keyframe_data output into this node alongside camera_matrices."
+                )
+            from .camera_math import project_frame_pts, get_z_scale
+            kfd_frames = keyframe_data.get("frames", {}) if isinstance(keyframe_data, dict) else {}
+            cam_frame_count = int(camera_matrices.get("frame_count", len(new_frames)))
+            if len(new_frames) != cam_frame_count:
+                print(f"[Retargeter] Warning: pose_data has {len(new_frames)} frames but "
+                      f"camera_matrices has {cam_frame_count}. Projecting min(len) frames.")
+            extr = camera_matrices["extrinsics"]
+            intr = camera_matrices["intrinsics"]
+            dists_arr = camera_matrices.get("dists")
+            cam_w = int(camera_matrices.get("width", 512))
+            cam_h = int(camera_matrices.get("height", 512))
+            pose_w = int(camera_matrices.get("pose_w", cam_w))
+            z_scale = get_z_scale(pose_w)
+            use_ortho = camera_projection == "Orthographic"
+            if use_ortho and dists_arr is None:
+                print("[Retargeter] camera_projection='Orthographic' but camera_matrices has no "
+                      "'dists' field — falling back to Perspective.")
+                use_ortho = False
+
+            # Coerce extrinsics/intrinsics/dists to numpy arrays once (torch tensors get
+            # converted via .detach().cpu().numpy()).
+            def _to_np(t):
+                if hasattr(t, "detach"):
+                    return t.detach().cpu().numpy()
+                return np.asarray(t)
+            extr_np = _to_np(extr)
+            intr_np = _to_np(intr)
+            dists_np = _to_np(dists_arr) if dists_arr is not None else None
+
+            self._project_new_frames_inplace(
+                new_frames, kfd_frames, extr_np, intr_np, dists_np,
+                z_scale, use_ortho, project_frame_pts,
+            )
+            projected_dims = (cam_w, cam_h)
+
         # Preserve the original input format so downstream nodes aren't confused
         if isinstance(pose_data, list):
             output_pose_data = new_frames
         elif isinstance(pose_data, dict):
             output_pose_data = {**pose_data, "pose_metas": new_frames}
+            if projected_dims is not None:
+                output_pose_data["width"]  = projected_dims[0]
+                output_pose_data["height"] = projected_dims[1]
         else:
             output_pose_data = new_frames[0] if len(new_frames) == 1 else new_frames
         
@@ -902,31 +1182,37 @@ class DWPoseClusterRetargeter:
         first_frame_kps_list = []
         canvas_dims = [512, 512]
 
+        # Pre-compute the transformed ref frame once (used by both preview and ref_frame_pose output)
+        _rf_new_frame = None
+        _rf_meta = None
+        _rf_raw = (keyframe_data or {}).get("ref_frame")
+        if _rf_raw is not None:
+            try:
+                from .dwpose_temporal_editor import _frame_to_posedata_entry
+                _rf_new_frame, _rf_meta = self._transform_frame(
+                    _frame_to_posedata_entry(_rf_raw), params, micro_offsets, disabled_points, default_hands
+                )
+            except Exception as _e:
+                print(f"MagosPoseRetargeter: ref frame transform failed: {_e}")
+
+        _ui_ref_meta = None  # preview_meta used for UI hand/face export
         if preview_metas:
             ref_idx = min(reference_frame_index, len(preview_metas) - 1)
-            ref_frame_meta = input_frames[ref_idx] if input_frames else {}
-            preview_image = self._generate_preview(
-                preview_metas[ref_idx],
-                ref_frame_meta,
-                reference_image
-            )
 
-            # Extract reference frame keypoints for UI
-            first_orig_kps = preview_metas[ref_idx]["orig_kps"]
-            # Convert numpy array to list for JSON serialization
-            first_frame_kps_list = first_orig_kps.tolist()
-
-            # Get canvas dimensions
-            if isinstance(ref_frame_meta, dict):
-                canvas_dims = [
-                    ref_frame_meta.get("width", 512),
-                    ref_frame_meta.get("height", 512)
-                ]
+            if reference_source == "Ref Frame" and _rf_meta is not None:
+                _ui_ref_meta = _rf_meta
+                preview_image = self._generate_preview(_rf_meta, _rf_raw, reference_image)
+                first_frame_kps_list = _rf_meta["orig_kps"].tolist()
+                canvas_dims = [_rf_raw.get("width", 512), _rf_raw.get("height", 512)]
             else:
-                canvas_dims = [
-                    getattr(ref_frame_meta, "width", 512),
-                    getattr(ref_frame_meta, "height", 512)
-                ]
+                _ui_ref_meta = preview_metas[ref_idx]
+                ref_frame_meta = input_frames[ref_idx] if input_frames else {}
+                preview_image = self._generate_preview(_ui_ref_meta, ref_frame_meta, reference_image)
+                first_frame_kps_list = _ui_ref_meta["orig_kps"].tolist()
+                if isinstance(ref_frame_meta, dict):
+                    canvas_dims = [ref_frame_meta.get("width", 512), ref_frame_meta.get("height", 512)]
+                else:
+                    canvas_dims = [getattr(ref_frame_meta, "width", 512), getattr(ref_frame_meta, "height", 512)]
         else:
             # Return empty preview if no frames
             preview_image = torch.zeros((1, 512, 512, 3), dtype=np.float32)
@@ -936,9 +1222,9 @@ class DWPoseClusterRetargeter:
         self._ui_output = {
             "first_frame_kps": first_frame_kps_list,
             "canvas_dims": canvas_dims,
-            "first_frame_lhand": preview_metas[ref_idx].get("orig_lhand", None).tolist() if preview_metas and preview_metas[ref_idx].get("orig_lhand") is not None else None,
-            "first_frame_rhand": preview_metas[ref_idx].get("orig_rhand", None).tolist() if preview_metas and preview_metas[ref_idx].get("orig_rhand") is not None else None,
-            "first_frame_face": preview_metas[ref_idx].get("orig_face") if preview_metas and preview_metas[ref_idx].get("orig_face") is not None else None,
+            "first_frame_lhand": _ui_ref_meta.get("orig_lhand", None).tolist() if _ui_ref_meta and _ui_ref_meta.get("orig_lhand") is not None else None,
+            "first_frame_rhand": _ui_ref_meta.get("orig_rhand", None).tolist() if _ui_ref_meta and _ui_ref_meta.get("orig_rhand") is not None else None,
+            "first_frame_face": _ui_ref_meta.get("orig_face") if _ui_ref_meta and _ui_ref_meta.get("orig_face") is not None else None,
         }
         
         # Add reference image to UI output if provided
@@ -974,7 +1260,20 @@ class DWPoseClusterRetargeter:
                 face_images, face_scale_x, face_scale_y, face_offset_x, face_offset_y
             )
 
-        return {"ui": self._ui_output, "result": (output_pose_data, preview_image, face_images)}
+        # Build ref_frame_pose output: reuse the already-computed transformed ref frame
+        ref_frame_pose = None
+        if _rf_new_frame is not None and _rf_raw is not None:
+            _rf_w = _rf_raw.get("width", canvas_dims[0] if canvas_dims else 512)
+            _rf_h = _rf_raw.get("height", canvas_dims[1] if canvas_dims else 512)
+            ref_frame_pose = {"pose_metas": [_rf_new_frame], "width": _rf_w, "height": _rf_h}
+
+        rlog.section("RETARGET DONE", {
+            "output_frames": len(new_frames),
+            "preview_image_shape": tuple(preview_image.shape) if hasattr(preview_image, "shape") else None,
+            "face_images_out": face_images,
+            "ref_frame_pose": "built" if ref_frame_pose else "none",
+        })
+        return {"ui": self._ui_output, "result": (output_pose_data, preview_image, face_images, ref_frame_pose)}
 
     @classmethod
     def IS_CHANGED(cls, **_):

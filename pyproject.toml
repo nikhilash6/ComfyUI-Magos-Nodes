@@ -1,0 +1,20 @@
+[project]
+name = "comfyui-magos-nodes"
+description = "Professional pose-control node pack for ComfyUI / WanAnimate: extract DWPose + NLF 3D skeletons from video, edit them frame-by-frame in a full-screen timeline + dope-sheet + graph editor, retarget cluster proportions, and render clean pose images."
+version = "1.0.0"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+dependencies = [
+    "numpy",
+    "opencv-python",
+    "torch",
+    "onnxruntime",
+]
+
+[project.urls]
+Repository = "https://github.com/MagosDigitalStudio/ComfyUI-Magos-Nodes"
+
+[tool.comfy]
+PublisherId = "magosdigitalstudio"
+DisplayName = "Magos Nodes"
+Icon = ""

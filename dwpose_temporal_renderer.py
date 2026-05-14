@@ -6,11 +6,14 @@ Renders POSEDATA (required) + optional KEYFRAME_DATA (for Z-depth sorted body bo
 into an IMAGE batch. Drop-in replacement for DrawViTPose.
 """
 
+import math
 import sys
 import numpy as np
 import torch
 import cv2
 from typing import Dict, Any, Optional, List
+
+from .nlf_integration import SMPL_TO_OPENPOSE
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +92,63 @@ FACE_CONNECTIONS = [
     *[(i, i+1) for i in range(60, 67)],  # inner lip
     (67, 60),
 ]
+
+
+# ---------------------------------------------------------------------------
+# NLF skeleton — OpenPose-18 connections matching SCAIL-Pose's limb_seq
+# Colors are pre-converted to BGR for OpenCV (SCAIL-Pose RGB source → BGR)
+# ---------------------------------------------------------------------------
+NLF_CONNECTIONS = [
+    [1, 2],[1, 5],[2, 3],[3, 4],[5, 6],[6, 7],       # arms
+    [1, 8],[8, 9],[9,10],[1,11],[11,12],[12,13],       # legs
+    [1, 0],[0,14],[14,16],[0,15],[15,17],               # head (14-17 unmapped from SMPL)
+]
+
+NLF_BONE_COLORS_BGR = [
+    (0,   0, 255),(255, 255,   0),(0,  85, 255),(0, 170, 255),
+    (255, 170,  0),(255,  85,   0),(0, 255, 180),(0, 255,   0),
+    (85, 255,   0),(255,   0,   0),(255,  0,  85),(255,  0, 170),
+    (150, 150, 150),
+    (170,   0, 255),(255,   0,  50),(170,  0, 255),(255,  0,  50),
+]
+
+NLF_JOINT_COLOR_BGR = (255, 120, 180)  # #b478ff-ish purple, matching editor overlay
+
+
+def _project_nlf_frame(joints_mm: np.ndarray, H: int, W: int) -> np.ndarray:
+    """
+    Project [24, 3] SMPL joints (camera-space mm) → [18, 3] OpenPose pixel+conf
+    using NLF's native 55° pinhole FOV.  col2 = 1.0 if mapped, 0.0 otherwise.
+    """
+    focal = max(H, W) / (math.tan(math.radians(27.5)) * 2.0)
+    j2d = np.zeros((18, 3), dtype=np.float32)
+    for smpl_idx, op_idx in SMPL_TO_OPENPOSE.items():
+        if smpl_idx >= len(joints_mm):
+            continue
+        x_mm, y_mm, z_mm = joints_mm[smpl_idx]
+        z_safe = max(float(z_mm), 0.1)
+        j2d[op_idx, 0] = focal * float(x_mm) / z_safe + W / 2.0
+        j2d[op_idx, 1] = focal * float(y_mm) / z_safe + H / 2.0
+        j2d[op_idx, 2] = 1.0
+    return j2d
+
+
+def _render_nlf_frame(j2d_18: np.ndarray, H: int, W: int) -> np.ndarray:
+    """Draw NLF skeleton onto a black BGR canvas. j2d_18: [18, 3] (x_px, y_px, conf)."""
+    canvas = np.zeros((H, W, 3), dtype=np.uint8)
+    for ci, (a, b) in enumerate(NLF_CONNECTIONS):
+        if j2d_18[a, 2] < 0.5 or j2d_18[b, 2] < 0.5:
+            continue
+        cv2.line(canvas,
+                 (int(j2d_18[a, 0]), int(j2d_18[a, 1])),
+                 (int(j2d_18[b, 0]), int(j2d_18[b, 1])),
+                 NLF_BONE_COLORS_BGR[ci], 2, cv2.LINE_AA)
+    for i in range(18):
+        if j2d_18[i, 2] < 0.5:
+            continue
+        cv2.circle(canvas, (int(j2d_18[i, 0]), int(j2d_18[i, 1])),
+                   4, NLF_JOINT_COLOR_BGR, -1, cv2.LINE_AA)
+    return canvas
 
 
 def _get_draw_fn():
@@ -171,6 +231,8 @@ def _render_frame(
     z_depth_map: Optional[Dict[int, Dict[str, float]]],
     W: int,
     H: int,
+    draw_fn=None,
+    skip_body: bool = False,
 ) -> tuple:
     """
     Render one frame into two separate uint8 (H, W, 3) BGR numpy arrays:
@@ -184,68 +246,112 @@ def _render_frame(
 
     kps_body, kps_body_p, kps_rhand, kps_rhand_p, kps_lhand, kps_lhand_p, kps_face, kps_face_p, fw, fh = _kps_from_meta(meta)
 
-    # ---------- Z-depth lookup ----------
-    z_frame: Dict[str, float] = {}
-    if z_depth_map:
-        z_frame = z_depth_map.get(frame_idx, {})
+    # 3D Z-Depth Occlusion Culling
+    z_frame = z_depth_map.get(frame_idx, {}) if z_depth_map else {}
+    if z_frame:
+        def get_z(joint_idx: int) -> float:
+            return z_frame.get(f"body_{joint_idx}", 0.0)
 
-    def get_z(joint_idx: int) -> float:
-        return z_frame.get(f"body_{joint_idx}", 0.0)
+        torso_joints = [get_z(2), get_z(5), get_z(8), get_z(11)]
+        torso_z = sum(torso_joints) / len(torso_joints) if torso_joints else 0.0
 
-    # ---------- Build connection list with avg Z ----------
-    conn_list = []
-    for (a, b, color) in BODY_CONNECTIONS:
-        if kps_body_p[a] < CONF_THRESHOLD or kps_body_p[b] < CONF_THRESHOLD:
-            continue
-        avg_z = (get_z(a) + get_z(b)) / 2.0
-        conn_list.append((avg_z, a, b, color))
+        r_wrist_z = get_z(4)
+        if r_wrist_z < torso_z - 0.15:
+            kps_body_p[4] = 0.0
+            if kps_rhand_p is not None:
+                kps_rhand_p[:] = 0.0
 
-    # Sort: higher Z = further back → draw first (painter's algorithm)
-    conn_list.sort(key=lambda x: x[0], reverse=True)
+        l_wrist_z = get_z(7)
+        if l_wrist_z < torso_z - 0.15:
+            kps_body_p[7] = 0.0
+            if kps_lhand_p is not None:
+                kps_lhand_p[:] = 0.0
 
-    # ---------- Draw body connections (back to front) ----------
-    for avg_z, a, b, color in conn_list:
-        pt_a = (int(kps_body[a, 0]), int(kps_body[a, 1]))
-        pt_b = (int(kps_body[b, 0]), int(kps_body[b, 1]))
-        cv2.line(pose_canvas, pt_a, pt_b, color, 2, cv2.LINE_AA)
+    if not skip_body:
+        # ---------- pose_draw path: use WanAnimatePreprocess ellipse renderer ----------
+        drawn_by_fn = False
+        if draw_fn is not None:
+            try:
+                result = draw_fn(meta)
+                if isinstance(result, np.ndarray) and result.shape == (H, W, 3):
+                    pose_canvas = result if result.dtype == np.uint8 else (result * 255).astype(np.uint8)
+                    drawn_by_fn = True
+            except Exception:
+                pass
 
-    # ---------- Draw body joints (back to front) ----------
-    joint_z = [(get_z(i), i) for i in range(20) if kps_body_p[i] >= CONF_THRESHOLD]
-    joint_z.sort(key=lambda x: x[0], reverse=True)
-    for _, i in joint_z:
-        pt = (int(kps_body[i, 0]), int(kps_body[i, 1]))
-        color = JOINT_COLORS.get(i, (255, 255, 255))
-        cv2.circle(pose_canvas, pt, 4, color, -1, cv2.LINE_AA)
+        if not drawn_by_fn:
+            # ---------- Z-depth lookup ----------
+            if not z_frame:
+                def get_z(joint_idx: int) -> float: return 0.0
+
+            # ---------- Build connection list with avg Z ----------
+            conn_list = []
+            for (a, b, color) in BODY_CONNECTIONS:
+                bone_conf = min(kps_body_p[a], kps_body_p[b])
+                if bone_conf < 0.15: # Much lower hard-cutoff
+                    continue
+                # Map confidence (0.15 to 0.7) to a visual multiplier (0.0 to 1.0)
+                visual_alpha = max(0.0, min(1.0, (bone_conf - 0.15) / 0.55))
+                # Darken the bone color based on confidence to simulate alpha fade
+                faded_color = tuple(int(c * visual_alpha) for c in color)
+                avg_z = (get_z(a) + get_z(b)) / 2.0
+                conn_list.append((avg_z, a, b, faded_color))
+
+            conn_list.sort(key=lambda x: x[0], reverse=True)
+
+            for avg_z, a, b, color in conn_list:
+                pt_a = (int(kps_body[a, 0]), int(kps_body[a, 1]))
+                pt_b = (int(kps_body[b, 0]), int(kps_body[b, 1]))
+                cv2.line(pose_canvas, pt_a, pt_b, color, 2, cv2.LINE_AA)
+
+            joint_z = [(get_z(i), i) for i in range(20) if kps_body_p[i] >= 0.15]
+            joint_z.sort(key=lambda x: x[0], reverse=True)
+            for _, i in joint_z:
+                pt = (int(kps_body[i, 0]), int(kps_body[i, 1]))
+                joint_conf = kps_body_p[i]
+                visual_alpha = max(0.0, min(1.0, (joint_conf - 0.15) / 0.55))
+                base_color = JOINT_COLORS.get(i, (255, 255, 255))
+                faded_color = tuple(int(c * visual_alpha) for c in base_color)
+                cv2.circle(pose_canvas, pt, 4, faded_color, -1, cv2.LINE_AA)
 
     # ---------- Draw hands (onto pose canvas) ----------
     for hand_kps, hand_p, base_color in [
         (kps_rhand, kps_rhand_p, (  0, 100, 255)),
         (kps_lhand, kps_lhand_p, (  0, 200, 100)),
     ]:
-        if np.all(hand_p < CONF_THRESHOLD):
+        if np.all(hand_p < 0.15):
             continue
         for (a, b) in HAND_CONNECTIONS:
-            if hand_p[a] < CONF_THRESHOLD or hand_p[b] < CONF_THRESHOLD:
+            bone_conf = min(hand_p[a], hand_p[b])
+            if bone_conf < 0.15:
                 continue
+            visual_alpha = max(0.0, min(1.0, (bone_conf - 0.15) / 0.55))
+            faded_color = tuple(int(c * visual_alpha) for c in base_color)
             pt_a = (int(hand_kps[a, 0]), int(hand_kps[a, 1]))
             pt_b = (int(hand_kps[b, 0]), int(hand_kps[b, 1]))
-            cv2.line(pose_canvas, pt_a, pt_b, base_color, 1, cv2.LINE_AA)
+            cv2.line(pose_canvas, pt_a, pt_b, faded_color, 1, cv2.LINE_AA)
         for i in range(21):
-            if hand_p[i] < CONF_THRESHOLD:
+            joint_conf = hand_p[i]
+            if joint_conf < 0.15:
                 continue
+            visual_alpha = max(0.0, min(1.0, (joint_conf - 0.15) / 0.55))
+            faded_color = tuple(int(c * visual_alpha) for c in base_color)
             pt = (int(hand_kps[i, 0]), int(hand_kps[i, 1]))
-            cv2.circle(pose_canvas, pt, 3, base_color, -1, cv2.LINE_AA)
+            cv2.circle(pose_canvas, pt, 3, faded_color, -1, cv2.LINE_AA)
 
     # ---------- Draw face (onto face canvas only) ----------
-    if np.any(kps_face_p >= CONF_THRESHOLD):
+    if np.any(kps_face_p >= 0.15):
         for (a, b) in FACE_CONNECTIONS:
             if a >= len(kps_face_p) or b >= len(kps_face_p):
                 continue
-            if kps_face_p[a] < CONF_THRESHOLD or kps_face_p[b] < CONF_THRESHOLD:
+            bone_conf = min(kps_face_p[a], kps_face_p[b])
+            if bone_conf < 0.15:
                 continue
+            visual_alpha = max(0.0, min(1.0, (bone_conf - 0.15) / 0.55))
+            faded_color = tuple(int(c * visual_alpha) for c in (200, 200, 200))
             pt_a = (int(kps_face[a, 0]), int(kps_face[a, 1]))
             pt_b = (int(kps_face[b, 0]), int(kps_face[b, 1]))
-            cv2.line(face_canvas, pt_a, pt_b, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.line(face_canvas, pt_a, pt_b, faded_color, 1, cv2.LINE_AA)
 
     return pose_canvas, face_canvas
 
@@ -286,8 +392,8 @@ class DWPoseTERenderer:
     """
 
     CATEGORY     = "MAGOS Nodes/Temporal Editor"
-    RETURN_TYPES = ("IMAGE", "IMAGE", "POSE_KEYPOINT")
-    RETURN_NAMES = ("pose_images", "face_images", "pose_keypoints")
+    RETURN_TYPES = ("IMAGE", "IMAGE", "POSE_KEYPOINT", "IMAGE")
+    RETURN_NAMES = ("pose_images", "face_images", "pose_keypoints", "nlf_images")
     FUNCTION     = "render"
 
     @classmethod
@@ -298,9 +404,22 @@ class DWPoseTERenderer:
             },
             "optional": {
                 "keyframe_data":     ("KEYFRAME_DATA",),
+                "nlf_poses":         ("NLFPRED",),
+                "nlf_render_mode":   ("BOOLEAN", {"default": False,
+                                                  "label_on":  "NLF Render",
+                                                  "label_off": "DWPose Render",
+                                                  "tooltip": "DWPose Render: body+hands+face from DWPose. NLF Render: NLF body skeleton replaces DWPose body bones (hands/face kept)."}),
                 "draw_face_on_pose": ("BOOLEAN", {"default": False,
                                                   "label_on":  "Face on Pose: On",
                                                   "label_off": "Face on Pose: Off"}),
+                "pose_draw":         ("BOOLEAN", {"default": False,
+                                                  "label_on":  "Pose Draw: On",
+                                                  "label_off": "Pose Draw: Off",
+                                                  "tooltip": "Use WanAnimatePreprocess ellipse-style bone rendering when available."}),
+                "debug_log":         ("BOOLEAN", {"default": False,
+                                                  "label_on":  "Debug: On",
+                                                  "label_off": "Debug: Off",
+                                                  "tooltip": "Write full trace to CMD + logs/session_*.log"}),
             },
         }
 
@@ -308,8 +427,21 @@ class DWPoseTERenderer:
         self,
         pose_data: Any,
         keyframe_data: Optional[Dict[str, Any]] = None,
+        nlf_poses: Optional[Dict[str, Any]] = None,
+        nlf_render_mode: bool = False,
         draw_face_on_pose: bool = False,
+        pose_draw: bool = False,
+        debug_log: bool = False,
     ) -> tuple:
+        from .debug_logger import get_logger
+        log = get_logger("Renderer", debug_log)
+        log.section("RENDER START", {
+            "pose_data_type": type(pose_data).__name__,
+            "keyframe_data": "connected" if keyframe_data is not None else None,
+            "nlf_render_mode": nlf_render_mode,
+            "draw_face_on_pose": draw_face_on_pose,
+            "pose_draw": pose_draw,
+        })
 
         # --- Unpack POSEDATA ---
         if isinstance(pose_data, list):
@@ -321,7 +453,7 @@ class DWPoseTERenderer:
 
         if not pose_metas:
             dummy = torch.zeros((1, 512, 512, 3), dtype=torch.float32)
-            return (dummy, dummy, [])
+            return (dummy, dummy, [], dummy)
 
         # Determine canvas size from first frame
         first = pose_metas[0]
@@ -339,19 +471,69 @@ class DWPoseTERenderer:
             if raw_z:
                 z_depth_map = {int(k): v for k, v in raw_z.items()}
 
+        # --- Unpack NLF per-frame tensors ---
+        nlf_frames_mm: List[Optional[np.ndarray]] = []   # each: [24, 3] mm or None
+        use_nlf = nlf_render_mode and nlf_poses is not None
+        if use_nlf:
+            try:
+                per_frame = nlf_poses["joints3d_nonparam"][0]  # list of [n_persons,24,3] tensors
+                for fi in range(len(pose_metas)):
+                    if fi < len(per_frame):
+                        t = per_frame[fi]
+                        arr = t.cpu().float().numpy() if hasattr(t, "cpu") else np.asarray(t, dtype=np.float32)
+                        nlf_frames_mm.append(arr[0] if arr.ndim == 3 and arr.shape[0] > 0 else None)
+                    else:
+                        nlf_frames_mm.append(None)
+            except Exception as e:
+                log.section("NLF UNPACK ERROR", {"error": str(e)})
+                use_nlf = False
+
+        # --- pose_draw fn ---
+        draw_fn = _get_draw_fn() if pose_draw else None
+        skip_body_for_dwpose = use_nlf
+
         # --- Render each frame ---
         pose_frames: List[np.ndarray] = []
         face_frames: List[np.ndarray] = []
+        nlf_frames_out: List[np.ndarray] = []
+
         for fi, meta in enumerate(pose_metas):
-            pose_bgr, face_bgr = _render_frame(meta, fi, z_depth_map, W, H)
+            pose_bgr, face_bgr = _render_frame(
+                meta, fi, z_depth_map, W, H,
+                draw_fn=draw_fn,
+                skip_body=skip_body_for_dwpose,
+            )
+
+            # Build NLF canvas for this frame
+            nlf_bgr = np.zeros((H, W, 3), dtype=np.uint8)
+            if use_nlf and fi < len(nlf_frames_mm) and nlf_frames_mm[fi] is not None:
+                j2d_18 = _project_nlf_frame(nlf_frames_mm[fi], H, W)
+                nlf_bgr = _render_nlf_frame(j2d_18, H, W)
+
+            # Blend NLF onto pose canvas
+            if use_nlf:
+                pose_bgr = cv2.add(pose_bgr, nlf_bgr)
+
             if draw_face_on_pose:
                 pose_bgr = cv2.add(pose_bgr, face_bgr)
+
             pose_frames.append(cv2.cvtColor(pose_bgr, cv2.COLOR_BGR2RGB))
             face_frames.append(cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB))
+            nlf_frames_out.append(cv2.cvtColor(nlf_bgr, cv2.COLOR_BGR2RGB))
 
         # Stack → (B, H, W, C) float32 tensors
-        pose_tensor = torch.from_numpy(np.stack(pose_frames, axis=0).astype(np.float32) / 255.0)
-        face_tensor = torch.from_numpy(np.stack(face_frames, axis=0).astype(np.float32) / 255.0)
+        pose_tensor = torch.from_numpy(np.stack(pose_frames,    axis=0).astype(np.float32) / 255.0)
+        face_tensor = torch.from_numpy(np.stack(face_frames,    axis=0).astype(np.float32) / 255.0)
+        nlf_tensor  = torch.from_numpy(np.stack(nlf_frames_out, axis=0).astype(np.float32) / 255.0)
 
         pose_keypoints = _build_pose_keypoints(pose_metas, W, H)
-        return (pose_tensor, face_tensor, pose_keypoints)
+        log.section("RENDER DONE", {
+            "frames": len(pose_metas),
+            "canvas_wh": (W, H),
+            "pose_tensor_shape": tuple(pose_tensor.shape),
+            "face_tensor_shape": tuple(face_tensor.shape),
+            "nlf_tensor_shape":  tuple(nlf_tensor.shape),
+            "pose_keypoints_count": len(pose_keypoints) if hasattr(pose_keypoints, "__len__") else "?",
+            "z_depth_keys": len(z_depth_map) if z_depth_map else 0,
+        })
+        return (pose_tensor, face_tensor, pose_keypoints, nlf_tensor)
