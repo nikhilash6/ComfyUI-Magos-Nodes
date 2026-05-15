@@ -24,15 +24,7 @@ The pack is engine-agnostic: it outputs standard ComfyUI types (`IMAGE`, `POSE_K
 
 All nodes register under the **MAGOS Nodes** sub-menu in the Add Node panel.
 
-
-https://github.com/user-attachments/assets/47e56dc7-91b6-40d5-bcf2-2af323891f85
-
-
-
-
-
-
-
+https://github.com/user-attachments/assets/1440b591-0585-4f6b-984a-ddcec1822a82
 
 ---
 
